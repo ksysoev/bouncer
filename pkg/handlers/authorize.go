@@ -21,57 +21,10 @@ type AuthorizeResponse struct {
 // Authorize is the handler for /authorize endpoint
 // it will validate authorization code and return jwt token
 func (a *App) Authorize(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+	errorCode, _ := a.validateRequest(r)
 
-	if r.Header.Get("Content-Type") != "application/json" {
-		w.WriteHeader(http.StatusUnsupportedMediaType)
-		return
-	}
-
-	if r.Header.Get("Authorization") == "" {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	//Parse authorize token
-	authHeader := r.Header.Get("Authorization")
-	token_type := authHeader[0:6]
-
-	if token_type != "Bearer" {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	jwt_token := authHeader[7:]
-
-	token, err := jwt.Parse(jwt_token, func(token *jwt.Token) (interface{}, error) {
-		// Don't forget to validate the alg is what you expect:
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		iss := token.Claims.(jwt.MapClaims)["iss"]
-		serviceName, ok := iss.(string)
-
-		if !ok {
-			return nil, fmt.Errorf("unexpected issuer format")
-		}
-
-		publicKey := a.publicKeys[serviceName]
-
-		return publicKey, nil
-	})
-
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	if !token.Valid {
-		w.WriteHeader(http.StatusUnauthorized)
+	if errorCode != 0 {
+		w.WriteHeader(errorCode)
 		return
 	}
 
@@ -144,4 +97,56 @@ func (a *App) Authorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(response)
+}
+
+func (a *App) validateRequest(r *http.Request) (int, any) {
+	if r.Method != "POST" {
+		return http.StatusMethodNotAllowed, nil
+	}
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		return http.StatusUnsupportedMediaType, nil
+	}
+
+	if r.Header.Get("Authorization") == "" {
+		return http.StatusUnauthorized, nil
+	}
+
+	//Parse authorize token
+	authHeader := r.Header.Get("Authorization")
+	token_type := authHeader[0:6]
+
+	if token_type != "Bearer" {
+		return http.StatusUnauthorized, nil
+	}
+
+	jwt_token := authHeader[7:]
+
+	token, err := jwt.Parse(jwt_token, func(token *jwt.Token) (interface{}, error) {
+		// Don't forget to validate the alg is what you expect:
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+
+		iss := token.Claims.(jwt.MapClaims)["iss"]
+		serviceName, ok := iss.(string)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected issuer format")
+		}
+
+		publicKey := a.publicKeys[serviceName]
+
+		return publicKey, nil
+	})
+
+	if err != nil {
+		return http.StatusUnauthorized, nil
+	}
+
+	if !token.Valid {
+		return http.StatusUnauthorized, nil
+	}
+
+	return 0, token
 }
