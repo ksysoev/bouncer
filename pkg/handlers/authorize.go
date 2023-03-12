@@ -4,18 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type AuthorizeRequest struct {
-	user_id string
+	Sub string   `json:"sub"`
+	Aud []string `json:"aud"`
 }
 
 type AuthorizeResponse struct {
-	access_token  string
-	refresh_token string
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // Authorize is the handler for /authorize endpoint
@@ -46,46 +48,18 @@ func (a *App) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Validate request body
-	if authorizeRequest.user_id == "" {
+	if authorizeRequest.Sub == "" || len(authorizeRequest.Aud) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	//Generate jwt token
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": "bouncer",
-		"sub": authorizeRequest.user_id,
-		"aud": "service",
-	})
-
-	// TODO: Adds loading private key
-	var privateKey string
-
-	accessTokenString, err := accessToken.SignedString(privateKey)
+	authorizeResponse, err := a.generateAuthorizeResponse(authorizeRequest)
 
 	if err != nil {
+		log.Println("Error generating authorize response: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	//Generate refresh token
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": "bouncer",
-		"sub": authorizeRequest.user_id,
-		"aud": "service",
-	})
-
-	refreshTokenString, err := refreshToken.SignedString(privateKey)
-
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	//Return response
-	var authorizeResponse AuthorizeResponse
-	authorizeResponse.access_token = accessTokenString
-	authorizeResponse.refresh_token = refreshTokenString
 
 	response, err := json.Marshal(authorizeResponse)
 
@@ -136,18 +110,71 @@ func (a *App) validateRequest(r *http.Request) (int, any) {
 		}
 
 		// TODO: Need to add logic for handling multiple public keys, that will be needed for key rotation
-		publicKey := a.AppConfig.Services[serviceName].PublicKeys[0]
 
-		return publicKey, nil
+		serviceCfg, ok := a.AppConfig.Services[serviceName]
+
+		if !ok {
+			return nil, fmt.Errorf("Issuer is unknown %v", iss)
+		}
+
+		publicKey := serviceCfg.PublicKeys[0]
+
+		if publicKey == "" {
+			return nil, fmt.Errorf("Issuer is unknown %v", iss)
+		}
+
+		key, _ := jwt.ParseRSAPublicKeyFromPEM([]byte(publicKey))
+
+		return key, nil
 	})
 
 	if err != nil {
+		log.Println(err)
 		return http.StatusUnauthorized, nil
 	}
 
 	if !token.Valid {
+		log.Println("Invalid token")
 		return http.StatusUnauthorized, nil
 	}
 
 	return 0, token
+}
+
+func (a *App) generateAuthorizeResponse(request AuthorizeRequest) (AuthorizeResponse, error) {
+	//Generate jwt token
+	var response AuthorizeResponse
+
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": "bouncer",
+		"sub": request.Aud,
+		"aud": "service",
+	})
+
+	privateKey := a.AppConfig.Certificates.PrivateKey
+	key, _ := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKey))
+	accessTokenString, err := accessToken.SignedString(key)
+
+	if err != nil {
+		return response, err
+	}
+
+	//Generate refresh token
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": "bouncer",
+		"sub": request.Sub,
+		"aud": request.Aud,
+	})
+
+	refreshTokenString, err := refreshToken.SignedString(key)
+
+	if err != nil {
+		return response, err
+	}
+
+	response.AccessToken = accessTokenString
+	response.RefreshToken = refreshTokenString
+
+	return response, nil
+
 }
