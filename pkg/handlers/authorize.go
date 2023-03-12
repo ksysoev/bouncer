@@ -135,7 +135,8 @@ func (a *App) validateRequest(r *http.Request) (int, any) {
 			return nil, fmt.Errorf("unexpected issuer format")
 		}
 
-		publicKey := a.publicKeys[serviceName]
+		// TODO: Need to add logic for handling multiple public keys, that will be needed for key rotation
+		publicKey := a.AppConfig.Services[serviceName].PublicKeys[0]
 
 		return publicKey, nil
 	})

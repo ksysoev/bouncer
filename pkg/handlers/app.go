@@ -7,9 +7,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type ServiceConfig struct {
+	PublicKeys []string `yaml:"public_keys"`
+	PrivateKey string   `yaml:"private_key"`
+}
+
+type AppConfig struct {
+	Services     map[string]ServiceConfig `yaml:"services"`
+	Certificates ServiceConfig            `yaml:"certificates"`
+}
+
 // App is the application, that contains all the handlers
 type App struct {
-	publicKeys map[string]string
+	AppConfig AppConfig
 }
 
 func (a *App) LoadPublicKeys(configFile string) error {
@@ -19,7 +29,7 @@ func (a *App) LoadPublicKeys(configFile string) error {
 		return err
 	}
 
-	err = yaml.Unmarshal(fileData, &a.publicKeys)
+	err = yaml.Unmarshal(fileData, &a.AppConfig)
 
 	return err
 }
