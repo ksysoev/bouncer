@@ -41,6 +41,29 @@ type TokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
+func getAuthorizeToken(r *http.Request) string {
+	if r.Header.Get("Authorization") == "" {
+		return ""
+	}
+
+	//Parse authorize token
+	authHeader := r.Header.Get("Authorization")
+
+	if len(authHeader) < 7 {
+		return ""
+	}
+
+	token_type := authHeader[0:6]
+
+	if token_type != "Bearer" {
+		return ""
+	}
+
+	jwt_token := authHeader[7:]
+
+	return jwt_token
+}
+
 // Token is the handler for /token endpoint, that will return jwt token
 func (a *App) Token(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -48,21 +71,11 @@ func (a *App) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Authorization") == "" {
+	jwt_token := getAuthorizeToken(r)
+	if jwt_token == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
-	//Parse authorize token
-	authHeader := r.Header.Get("Authorization")
-	token_type := authHeader[0:6]
-
-	if token_type != "Bearer" {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	jwt_token := authHeader[7:]
 
 	refreshToken, err := models.ParseRefreshToken(jwt_token, a.AppConfig.Certificates.PrivateKey)
 
@@ -105,21 +118,11 @@ func (a *App) ValidateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Authorization") == "" {
+	accessToken := getAuthorizeToken(r)
+	if accessToken == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
-	//Parse authorize token
-	authHeader := r.Header.Get("Authorization")
-	tokenType := authHeader[0:6]
-
-	if tokenType != "Bearer" {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	accessToken := authHeader[7:]
 
 	var token *jwt.Token
 	var err error

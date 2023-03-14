@@ -83,19 +83,11 @@ func (a *App) validateRequest(r *http.Request) (int, any) {
 		return http.StatusUnsupportedMediaType, nil
 	}
 
-	if r.Header.Get("Authorization") == "" {
+	jwt_token := getAuthorizeToken(r)
+
+	if jwt_token == "" {
 		return http.StatusUnauthorized, nil
 	}
-
-	//Parse authorize token
-	authHeader := r.Header.Get("Authorization")
-	token_type := authHeader[0:6]
-
-	if token_type != "Bearer" {
-		return http.StatusUnauthorized, nil
-	}
-
-	jwt_token := authHeader[7:]
 
 	token, err := jwt.Parse(jwt_token, func(token *jwt.Token) (interface{}, error) {
 		// Don't forget to validate the alg is what you expect:
