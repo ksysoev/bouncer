@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ksysoev/bouncer/pkg/models"
 )
 
 type AuthorizeRequest struct {
@@ -145,28 +146,17 @@ func (a *App) generateAuthorizeResponse(request AuthorizeRequest) (AuthorizeResp
 	//Generate jwt token
 	var response AuthorizeResponse
 
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+	refreshToken, refreshTokenString, err := models.GenerateRefreshToken(jwt.MapClaims{
 		"iss": "bouncer",
 		"sub": request.Aud,
 		"aud": "service",
-	})
-
-	privateKey := a.AppConfig.Certificates.PrivateKey
-	key, _ := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKey))
-	accessTokenString, err := accessToken.SignedString(key)
+	}, a.AppConfig.Certificates.PrivateKey)
 
 	if err != nil {
 		return response, err
 	}
 
-	//Generate refresh token
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": "bouncer",
-		"sub": request.Sub,
-		"aud": request.Aud,
-	})
-
-	refreshTokenString, err := refreshToken.SignedString(key)
+	accessTokenString, err := models.GenerateAccessToken(refreshToken, a.AppConfig.Certificates.PrivateKey)
 
 	if err != nil {
 		return response, err

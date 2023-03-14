@@ -2,12 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ksysoev/bouncer/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 
@@ -65,45 +64,14 @@ func (a *App) Token(w http.ResponseWriter, r *http.Request) {
 
 	jwt_token := authHeader[7:]
 
-	token, err := jwt.Parse(jwt_token, func(token *jwt.Token) (interface{}, error) {
-		// Don't forget to validate the alg is what you expect:
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		certs := a.AppConfig.Certificates
-
-		publicKey := certs.PublicKeys[0]
-
-		key, _ := jwt.ParseRSAPublicKeyFromPEM([]byte(publicKey))
-
-		return key, nil
-	})
+	refreshToken, err := models.ParseRefreshToken(jwt_token, a.AppConfig.Certificates.PrivateKey)
 
 	if err != nil {
-		log.Println(err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	if !token.Valid {
-		log.Println("Invalid token")
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	aud := token.Claims.(jwt.MapClaims)["aud"]
-	sub := token.Claims.(jwt.MapClaims)["sub"]
-
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": "bouncer",
-		"sub": sub,
-		"aud": aud,
-	})
-
-	privateKey := a.AppConfig.Certificates.PrivateKey
-	key, _ := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKey))
-	accessTokenString, err := accessToken.SignedString(key)
+	accessToken, err := models.GenerateAccessToken(refreshToken, a.AppConfig.Certificates.PrivateKey)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -111,7 +79,7 @@ func (a *App) Token(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tokenResponse TokenResponse
-	tokenResponse.AccessToken = accessTokenString
+	tokenResponse.AccessToken = accessToken
 
 	response, err := json.Marshal(tokenResponse)
 
@@ -144,65 +112,37 @@ func (a *App) ValidateToken(w http.ResponseWriter, r *http.Request) {
 
 	//Parse authorize token
 	authHeader := r.Header.Get("Authorization")
-	token_type := authHeader[0:6]
+	tokenType := authHeader[0:6]
 
-	if token_type != "Bearer" {
+	if tokenType != "Bearer" {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	jwt_token := authHeader[7:]
+	accessToken := authHeader[7:]
 
-	token, err := jwt.Parse(jwt_token, func(token *jwt.Token) (interface{}, error) {
-		// Don't forget to validate the alg is what you expect:
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+	var token *jwt.Token
+	var err error
+
+	for _, publicKey := range a.AppConfig.Certificates.PublicKeys {
+		token, err = models.ParseAccessToken(accessToken, publicKey)
+		if err != nil {
+			continue
 		}
+	}
 
-		certs := a.AppConfig.Certificates
-
-		publicKey := certs.PublicKeys[0]
-
-		key, _ := jwt.ParseRSAPublicKeyFromPEM([]byte(publicKey))
-
-		return key, nil
-	})
-
-	if err != nil {
-		log.Println(err)
+	if token == nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	if !token.Valid {
-		log.Println("Invalid token")
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	var response ValidateTokenResponse
 
-	aud := token.Claims.(jwt.MapClaims)["aud"]
-	sub := token.Claims.(jwt.MapClaims)["sub"]
+	// Token is issued by us, right? probably we can trust it for now, but I should improve this
+	response.Subject, _ = token.Claims.GetSubject()
+	response.Audience, _ = token.Claims.GetAudience()
 
-	var validateTokenResponse ValidateTokenResponse
-
-	var Aud []string
-
-	switch x := aud.(type) {
-	case []any:
-		for _, v := range x {
-			Aud = append(Aud, v.(string))
-		}
-	case any:
-		Aud = append(Aud, x.(string))
-	default:
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	validateTokenResponse.Audience = append(validateTokenResponse.Audience, Aud...)
-	validateTokenResponse.Subject = sub.(string)
-
-	response, err := json.Marshal(validateTokenResponse)
+	responseString, err := json.Marshal(response)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -211,7 +151,7 @@ func (a *App) ValidateToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(response)
+	w.Write(responseString)
 }
 
 // PublicKeys is the handler for /public_keys endpoint that will return public keys
