@@ -6,6 +6,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const AccessTokenExpireTime = 360
+
 func GenerateRefreshToken(claims jwt.MapClaims, secret string) (*jwt.Token, string, error) {
 	var token *jwt.Token
 	token = jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

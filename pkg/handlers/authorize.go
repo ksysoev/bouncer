@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ksysoev/bouncer/pkg/models"
+	"github.com/redis/go-redis/v9"
 )
 
 type AuthorizeRequest struct {
@@ -54,7 +56,7 @@ func (a *App) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authorizeResponse, err := a.generateAuthorizeResponse(authorizeRequest)
+	authorizeResponse, err := a.generateAuthorizeResponse(r.Context(), authorizeRequest)
 
 	if err != nil {
 		log.Println("Error generating authorize response: ", err)
@@ -134,15 +136,22 @@ func (a *App) validateRequest(r *http.Request) (int, any) {
 	return 0, token
 }
 
-func (a *App) generateAuthorizeResponse(request AuthorizeRequest) (AuthorizeResponse, error) {
+func (a *App) generateAuthorizeResponse(ctx context.Context, request AuthorizeRequest) (AuthorizeResponse, error) {
 	//Generate jwt token
 	var response AuthorizeResponse
+
+	version, err := a.Redis.Get(ctx, "USER::VERSION::"+request.Sub).Result()
+	if err == redis.Nil {
+		version = "0"
+	} else if err != nil {
+		return response, err
+	}
 
 	refreshToken, refreshTokenString, err := models.GenerateRefreshToken(jwt.MapClaims{
 		"iss": "bouncer",
 		"sub": request.Aud,
 		"aud": "service",
-	}, a.AppConfig.Certificates.PrivateKey)
+	}, a.AppConfig.Certificates.PrivateKey+version)
 
 	if err != nil {
 		return response, err

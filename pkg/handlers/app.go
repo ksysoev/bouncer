@@ -23,6 +23,7 @@ type AppConfig struct {
 // App is the application, that contains all the handlers
 type App struct {
 	AppConfig AppConfig
+	UserModel models.UserModel
 }
 
 func (a *App) LoadPublicKeys(configFile string) error {
@@ -179,4 +180,38 @@ func (a *App) PublicKeys(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(response)
 
+}
+
+func (a *App) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	jwt_token := getAuthorizeToken(r)
+	if jwt_token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	refreshToken, err := models.ParseRefreshToken(jwt_token, a.AppConfig.Certificates.PrivateKey)
+
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	sub, err := refreshToken.Claims.GetSubject()
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	err = a.Redis.Incr(r.Context(), "USER::VERSION::"+sub).Err()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
