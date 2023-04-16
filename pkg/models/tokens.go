@@ -21,8 +21,20 @@ func GenerateRefreshToken(claims jwt.MapClaims, secret string) (*jwt.Token, stri
 	return token, result, nil
 }
 
-func ParseRefreshToken(tokenString string, secret string) (*jwt.Token, error) {
+func ParseRefreshToken(tokenString string, secretGenerator func(string) (string, error)) (*jwt.Token, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		sub, err := token.Claims.GetSubject()
+
+		if err != nil {
+			return []byte(""), err
+		}
+
+		secret, err := secretGenerator(sub)
+
+		if err != nil {
+			return []byte(""), err
+		}
+
 		return []byte(secret), nil
 	})
 

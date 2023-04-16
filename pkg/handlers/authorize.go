@@ -10,7 +10,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ksysoev/bouncer/pkg/models"
-	"github.com/redis/go-redis/v9"
 )
 
 type AuthorizeRequest struct {
@@ -21,6 +20,14 @@ type AuthorizeRequest struct {
 type AuthorizeResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+type LogoutRequest struct {
+	Sub string `json:"sub"`
+}
+
+type LogoutResponse struct {
+	Status string `json:"status"`
 }
 
 // Authorize is the handler for /authorize endpoint
@@ -140,18 +147,16 @@ func (a *App) generateAuthorizeResponse(ctx context.Context, request AuthorizeRe
 	//Generate jwt token
 	var response AuthorizeResponse
 
-	version, err := a.Redis.Get(ctx, "USER::VERSION::"+request.Sub).Result()
-	if err == redis.Nil {
-		version = "0"
-	} else if err != nil {
+	ver, err := a.UserModel.GetVersion(ctx, request.Sub)
+	if err != nil {
 		return response, err
 	}
 
 	refreshToken, refreshTokenString, err := models.GenerateRefreshToken(jwt.MapClaims{
 		"iss": "bouncer",
-		"sub": request.Aud,
+		"sub": request.Sub,
 		"aud": "service",
-	}, a.AppConfig.Certificates.PrivateKey+version)
+	}, a.AppConfig.Certificates.PrivateKey+ver)
 
 	if err != nil {
 		return response, err
@@ -168,4 +173,57 @@ func (a *App) generateAuthorizeResponse(ctx context.Context, request AuthorizeRe
 
 	return response, nil
 
+}
+
+func (a *App) Logout(w http.ResponseWriter, r *http.Request) {
+	errorCode, _ := a.validateRequest(r)
+
+	if errorCode != 0 {
+		w.WriteHeader(errorCode)
+		return
+	}
+
+	//Parse request body
+	body, err := ioutil.ReadAll(r.Body)
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var logoutRequest LogoutRequest
+
+	err = json.Unmarshal(body, &logoutRequest)
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//Validate request body
+	if logoutRequest.Sub == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	_, err = a.UserModel.UpdateVersion(r.Context(), logoutRequest.Sub)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	logoutrResponse := LogoutResponse{
+		Status: "ok",
+	}
+
+	response, err := json.Marshal(logoutrResponse)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(response)
 }
