@@ -22,14 +22,6 @@ type AuthorizeResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type LogoutRequest struct {
-	Sub string `json:"sub"`
-}
-
-type LogoutResponse struct {
-	Status string `json:"status"`
-}
-
 // Authorize is the handler for /authorize endpoint
 // it will validate authorization code and return jwt token
 func (a *App) Authorize(w http.ResponseWriter, r *http.Request) {

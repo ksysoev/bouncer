@@ -6,6 +6,14 @@ import (
 	"net/http"
 )
 
+type LogoutRequest struct {
+	Sub string `json:"sub"`
+}
+
+type LogoutResponse struct {
+	Status string `json:"status"`
+}
+
 func (a *App) Logout(w http.ResponseWriter, r *http.Request) {
 	errorCode, _ := a.validateRequest(r)
 

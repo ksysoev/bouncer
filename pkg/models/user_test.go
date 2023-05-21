@@ -13,7 +13,7 @@ func TestUserModel_GetVersion(t *testing.T) {
 	client, mock := redismock.NewClientMock()
 
 	// Define the UserModel with the mock Redis client
-	model := &UserModel{
+	model := &RedisUserModel{
 		Redis:  client,
 		Prefix: "user:",
 		Expiry: time.Hour * 24,
@@ -43,7 +43,7 @@ func TestUserModel_UpdateVersion(t *testing.T) {
 	client, mock := redismock.NewClientMock()
 
 	// Define the UserModel with the mock Redis client
-	model := &UserModel{
+	model := &RedisUserModel{
 		Redis:  client,
 		Prefix: "user:",
 		Expiry: time.Hour * 24,

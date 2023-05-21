@@ -21,7 +21,7 @@ type AppConfig struct {
 // App is the application, that contains all the handlers
 type App struct {
 	AppConfig AppConfig
-	UserModel *models.UserModel
+	UserModel models.UserModel
 }
 
 func (a *App) LoadPublicKeys(configFile string) error {

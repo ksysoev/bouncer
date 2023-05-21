@@ -16,7 +16,7 @@ func TestApp_PublicKeys(t *testing.T) {
 			PrivateKey: "private_key",
 		},
 	}
-	userModel := &models.UserModel{}
+	userModel := &models.RedisUserModel{}
 
 	// Define the test App with the test AppConfig and UserModel
 	app := &App{
@@ -62,7 +62,7 @@ func TestApp_PublicKeys_MethodNotAllowed(t *testing.T) {
 			PrivateKey: "private_key",
 		},
 	}
-	userModel := &models.UserModel{}
+	userModel := &models.RedisUserModel{}
 
 	// Define the test App with the test AppConfig and UserModel
 	app := &App{

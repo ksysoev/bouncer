@@ -14,13 +14,19 @@ import (
 const userVersionPrefix = "USER::VERSION::"
 const versionExpiry = time.Hour * 24 * 30
 
-type UserModel struct {
+type UserModel interface {
+	GetVersion(ctx context.Context, userID string) (string, error)
+	UpdateVersion(ctx context.Context, userID string) (string, error)
+}
+
+// UserModel is the model for user
+type RedisUserModel struct {
 	Redis  *redis.Client
 	Prefix string
 	Expiry time.Duration
 }
 
-func NewUserModel(redis *redis.Client, prefix string, expiry time.Duration) *UserModel {
+func NewUserModel(redis *redis.Client, prefix string, expiry time.Duration) *RedisUserModel {
 	if prefix == "" {
 		prefix = userVersionPrefix
 	}
@@ -29,7 +35,7 @@ func NewUserModel(redis *redis.Client, prefix string, expiry time.Duration) *Use
 		expiry = versionExpiry
 	}
 
-	return &UserModel{
+	return &RedisUserModel{
 		Redis:  redis,
 		Prefix: prefix,
 		Expiry: expiry,
@@ -37,7 +43,7 @@ func NewUserModel(redis *redis.Client, prefix string, expiry time.Duration) *Use
 }
 
 // GetVersion returns the version of the user and updates the expiry of the version
-func (u *UserModel) GetVersion(ctx context.Context, userId string) (string, error) {
+func (u *RedisUserModel) GetVersion(ctx context.Context, userId string) (string, error) {
 	pipe := u.Redis.TxPipeline()
 	var noTTL time.Duration
 	_ = pipe.SetNX(ctx, u.Prefix+userId, "0", noTTL)
@@ -52,7 +58,7 @@ func (u *UserModel) GetVersion(ctx context.Context, userId string) (string, erro
 	return verCmd.Val(), nil
 }
 
-func (u *UserModel) UpdateVersion(ctx context.Context, userId string) (string, error) {
+func (u *RedisUserModel) UpdateVersion(ctx context.Context, userId string) (string, error) {
 	pipe := u.Redis.TxPipeline()
 	verCmd := pipe.Incr(ctx, u.Prefix+userId)
 	_ = pipe.Expire(ctx, u.Prefix+userId, u.Expiry)
